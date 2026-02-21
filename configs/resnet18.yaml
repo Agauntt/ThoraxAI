@@ -1,0 +1,17 @@
+seed: 42
+data_dir: "data"
+output_dir: "outputs/run1"
+
+img_size: 224
+batch_size: 32
+num_workers: 4
+
+model_name: "resnet18"
+pretrained: true
+
+lr: 0.0003
+weight_decay: 0.0001
+epochs: 10
+
+# If your dataset is imbalanced, you can enable class weights later.
+use_class_weights: false
