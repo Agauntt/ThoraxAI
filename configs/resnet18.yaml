@@ -3,8 +3,8 @@ data_dir: "data"
 output_dir: "outputs/run1"
 
 img_size: 224
-batch_size: 32
-num_workers: 4
+batch_size: 16
+num_workers: 8
 
 model_name: "resnet18"
 pretrained: true

@@ -4,7 +4,8 @@ from torch.utils.data import DataLoader
 
 def make_transforms(img_size: int):
     train_tf = transforms.Compose([
-        transforms.Resize((img_size, img_size)),
+        transforms.Resize(int(img_size * 1.2)),
+        transforms.CenterCrop(img_size),
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.RandomRotation(10),
         transforms.ToTensor(),
@@ -12,7 +13,8 @@ def make_transforms(img_size: int):
                              std=[0.229, 0.224, 0.225])
     ])
     eval_tf = transforms.Compose([
-        transforms.Resize((img_size, img_size)),
+        transforms.Resize(int(img_size * 1.2)),
+        transforms.CenterCrop(img_size),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], 
                              std=[0.229, 0.224, 0.225])
