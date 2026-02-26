@@ -1,5 +1,5 @@
 # ThoraxAI
-ThoraxAI is a multi-label chest X-ray pathology classifier using transfer learning from ResNet, with Grad-CAM explainability for anomaly localization. It is an explainable AI (XAI) built in four phases -
+ThoraxAI is a multi-label chest X-ray pathology classifier using transfer learning from ResNet, with Grad-CAM explainability for anomaly localization. It is an explainable AI (XAI) built in four phases -  
             1. Binary detection of pneumonia  
             2. Localized detection of the affected lobe  
             3. Multi-condition detection  
