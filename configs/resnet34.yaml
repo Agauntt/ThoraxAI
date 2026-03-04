@@ -1,10 +1,10 @@
 seed: 42
 data_dir: "data"
-output_dir: "outputs/res34/run1"
+output_dir: "outputs/res34/run2"
 
 img_size: 224
 batch_size: 16
-num_workers: 8
+num_workers: 2
 
 model_name: "resnet34"
 pretrained: true

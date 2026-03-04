@@ -1,7 +1,7 @@
 import torch
 
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader, WeightedRandomSampler, random_split
 
 
 def make_transforms(img_size: int):
@@ -30,15 +30,21 @@ def make_transforms(img_size: int):
 def make_loaders(data_dir: str, img_size: int, batch_size: int, num_workers: int):
     train_tf, eval_tf = make_transforms(img_size)
 
-    train_ds = datasets.ImageFolder(root=f"{data_dir}/train", transform=train_tf)
-    val_ds   = datasets.ImageFolder(root=f"{data_dir}/val",   transform=eval_tf)
+    full_train = datasets.ImageFolder(root=f"{data_dir}/train", transform=train_tf)
+    # val_ds   = datasets.ImageFolder(root=f"{data_dir}/val",   transform=eval_tf)
     test_ds  = datasets.ImageFolder(root=f"{data_dir}/test",  transform=eval_tf)
 
+    # Split full_train into train and val
+    val_size = int(0.15 * len(full_train))
+    train_size = len(full_train) - val_size
+    train_ds, val_ds = random_split(full_train, [train_size, val_size], generator=torch.Generator().manual_seed(42))
+
     # Weighted sampling to handle class imbalance
-    class_counts = torch.bincount(torch.tensor(train_ds.targets))
+    train_targets = [full_train.targets[i] for i in train_ds.indices]
+    class_counts = torch.bincount(torch.tensor(train_targets))
     class_weights = 1.0 / (class_counts.float())
-    sample_weights = class_weights[train_ds.targets]
-    sampler = WeightedRandomSampler(sample_weights, num_samples=len(sample_weights), replacement=True)
+    sample_weights = class_weights[train_targets]
+    sampler = WeightedRandomSampler(sample_weights.tolist(), num_samples=len(sample_weights), replacement=True)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, sampler=sampler,
                               num_workers=num_workers, pin_memory=True)
@@ -46,4 +52,4 @@ def make_loaders(data_dir: str, img_size: int, batch_size: int, num_workers: int
                             num_workers=num_workers, pin_memory=True)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False,
                              num_workers=num_workers, pin_memory=True)
-    return train_loader, val_loader, test_loader, train_ds.class_to_idx
+    return train_loader, val_loader, test_loader, full_train.class_to_idx
