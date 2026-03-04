@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 from torchmetrics.classification import BinaryAUROC
 
@@ -48,11 +49,13 @@ def main(cfg):
     optimizer = AdamW(model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
     best_auc = -1.0
     best_path = f'{cfg["output_dir"]}/best.pt'
+    scheduler = CosineAnnealingLR(optimizer, T_max=cfg["epochs"], eta_min=1e-6)
 
     for epoch in range(1, cfg["epochs"] + 1):
         t0 = time.time()
         tr_loss, tr_auc = run_epoch(model, train_loader, optimizer, device, train=True)
         va_loss, va_auc = run_epoch(model, val_loader, optimizer, device, train=False)
+        scheduler.step()
 
         print(f"Epoch {epoch:02d} | "
               f"train loss {tr_loss:.4f} auc {tr_auc:.4f} | "

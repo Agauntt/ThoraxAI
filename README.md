@@ -1,9 +1,9 @@
 # VigilXAI
-
 This project aims to be a multi-phase AI agent that can analyze Chest X-Rays (CXRs) to detect the presence of different conditions that are diagnosable through the use of CXRs. The phases are planned as such:
 
-1. A binary CNN that can detect the presence of pneumonia
-2. Detection of lung cancer and other conditions  
-3. Inclusion of a heatmap to determine the location of the CXR anomaly  
+    1. A binary CNN that can detect the presence of pneumonia  
+    2. Detection of multiple conditions  
+    3. Inclusion of a heatmap to determine the location of the CXR anomaly  
+    4. Clinical robustness, including adding a layer of uncertainty  
 
 This project is for research and educational purposes only and is not intended for clinical use.
