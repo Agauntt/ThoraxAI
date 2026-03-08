@@ -1,7 +1,64 @@
+import os
 import torch
+import pandas as pd
+import numpy as np
 
+from PIL import Image
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader, WeightedRandomSampler, random_split
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler, random_split
+
+
+# Chest X-ray pathology labels
+LABELS = [
+    "Atelectasis", "Cardiomegaly", "Consolidation", "Edema",
+    "Effusion", "Emphysema", "Fibrosis", "Hernia",
+    "Infiltration", "Mass", "No Finding", "Nodule",
+    "Pleural_Thickening", "Pneumonia", "Pneumothorax"
+]
+
+NUM_CLASSES = len(LABELS)
+
+
+class NIHChestDataset(Dataset):
+    """
+    NIH ChestX-ray14 dataset.
+
+    Expects:
+        csv_path  : path to Data_Entry_2017.csv
+        img_dir   : root directory containing all PNG images
+        transform : torchvision transform pipeline
+    
+    Label encoding:
+        Pipe-delimited strings ("Pneumonia|Effusion") are parsed into
+        a float32 binary vector of length NUM_CLASSES.
+    """
+    def __init__(self, df: pd.DataFrame, img_dir: str, transform=None):
+        self.df = df.reset_index(drop=True)
+        self.img_dir = img_dir
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        img_path = os.path.join(self.img_dir, row["Image Index"])
+        image = Image.open(img_path).convert("RGB")
+
+
+        if self.transform:
+            image = self.transform(image)
+
+        # Parse pipe-delimited labels into binary vector
+        findings = row["Finding Labels"].split("|")
+        label= torch.zeros(NUM_CLASSES, dtype=torch.float32)
+        # print(f"NUM_CLASSES: {NUM_CLASSES}, LABEEL SHAPE: {label.shape}")
+        for finding in findings:
+            finding = finding.strip()
+            if finding in LABELS:
+                label[LABELS.index(finding)] = 1.0
+
+        return image, label
 
 
 def make_transforms(img_size: int):
@@ -30,26 +87,62 @@ def make_transforms(img_size: int):
 def make_loaders(data_dir: str, img_size: int, batch_size: int, num_workers: int):
     train_tf, eval_tf = make_transforms(img_size)
 
-    full_train = datasets.ImageFolder(root=f"{data_dir}/train", transform=train_tf)
-    # val_ds   = datasets.ImageFolder(root=f"{data_dir}/val",   transform=eval_tf)
-    test_ds  = datasets.ImageFolder(root=f"{data_dir}/test",  transform=eval_tf)
+    # Load and split csv metadata
+    csv_path = os.path.join(data_dir, "Data_Entry_2017.csv")
+    df = pd.read_csv(csv_path)
 
-    # Split full_train into train and val
-    val_size = int(0.15 * len(full_train))
-    train_size = len(full_train) - val_size
-    train_ds, val_ds = random_split(full_train, [train_size, val_size], generator=torch.Generator().manual_seed(42))
+    # Reproducable train/val/test split: 70/15/15
+    df = df.sample(frac=1, random_state=42).reset_index(drop=True)  # shuffle
+    n = len(df)
+    train_end = int(0.70 * n)
+    val_end   = int(0.85 * n)
 
-    # Weighted sampling to handle class imbalance
-    train_targets = [full_train.targets[i] for i in train_ds.indices]
-    class_counts = torch.bincount(torch.tensor(train_targets))
-    class_weights = 1.0 / (class_counts.float())
-    sample_weights = class_weights[train_targets]
-    sampler = WeightedRandomSampler(sample_weights.tolist(), num_samples=len(sample_weights), replacement=True)
+    train_df = df.iloc[:train_end].reset_index(drop=True)
+    val_df   = df.iloc[train_end:val_end].reset_index(drop=True)
+    test_df  = df.iloc[val_end:].reset_index(drop=True)
+
+    img_dir = os.path.join(data_dir, "images")
+    train_ds = NIHChestDataset(train_df, img_dir, transform=train_tf)
+    val_ds   = NIHChestDataset(val_df, img_dir, transform=eval_tf)
+    test_ds  = NIHChestDataset(test_df, img_dir, transform=eval_tf)
+
+    # Multi-label Weighted sampling to handle class imbalance
+    # Strategy: weight each sample by the rarity of its rarest positive label
+    # This ensures uncommon conditions get adequate representation during training
+    label_matrix = _build_label_matrix(train_df)  # (N, NUM_CLASSES)
+    label_counts = label_matrix.sum(axis=0).clip(min=1)          # count per label
+    label_weights = 1.0 / label_counts                            # inverse frequency
+    sample_weights = label_matrix.dot(label_weights)              # sum weights of positive labels
+    sample_weights = sample_weights / sample_weights.sum()        # normalize
+
+    sampler = WeightedRandomSampler(
+        weights=sample_weights.tolist(),
+        num_samples=len(train_ds),
+        replacement=True
+    )
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, sampler=sampler,
                               num_workers=num_workers, pin_memory=True)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False,
-                            num_workers=num_workers, pin_memory=True)
+                            num_workers=num_workers, pin_memory=True,
+                            persistent_workers=num_workers > 0)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False,
-                             num_workers=num_workers, pin_memory=True)
-    return train_loader, val_loader, test_loader, full_train.class_to_idx
+                             num_workers=num_workers, pin_memory=True,
+                             persistent_workers=num_workers > 0)
+    
+    return train_loader, val_loader, test_loader
+
+
+def _build_label_matrix(df: pd.DataFrame) -> np.ndarray:
+    """
+    Build a binary label matrix of shape (N, NUM_CLASSES) from the DataFrame.
+    Each row corresponds to a sample, and each column corresponds to a label.
+    """
+    label_matrix = np.zeros((len(df), NUM_CLASSES), dtype=np.float32)
+    for i, labels in enumerate(df["Finding Labels"]):
+        for label in str(labels).split("|"):
+            label = label.strip()
+            if label in LABELS:
+                label_matrix[i, LABELS.index(label)] = 1.0
+    return label_matrix
+
